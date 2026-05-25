@@ -1,6 +1,29 @@
 const db =
     require("../config/db");
 
+// safe helpers
+const safeNumber = (
+    value
+) => {
+    const parsed =
+        parseFloat(value);
+
+    return isNaN(parsed)
+        ? 0
+        : parsed;
+};
+
+const safeInteger = (
+    value
+) => {
+    const parsed =
+        parseInt(value);
+
+    return isNaN(parsed)
+        ? 0
+        : parsed;
+};
+
 // create order service
 const createOrderService =
     (
@@ -11,11 +34,13 @@ const createOrderService =
                 resolve,
                 reject
             ) => {
+
                 db.getConnection(
                     (
                         connectionError,
                         connection
                     ) => {
+
                         if (
                             connectionError
                         ) {
@@ -25,20 +50,80 @@ const createOrderService =
                         }
 
                         connection.beginTransaction(
-                            async (
+                            (
                                 transactionError
                             ) => {
+
                                 if (
                                     transactionError
                                 ) {
                                     connection.release();
+
                                     return reject(
                                         transactionError
                                     );
                                 }
 
-                                try {
-                                    const {
+                                const {
+                                    user_id,
+                                    customer_name,
+                                    customer_email,
+                                    customer_phone,
+                                    city,
+                                    state,
+                                    zip,
+                                    full_address,
+                                    payment_method,
+                                    items
+                                } =
+                                    orderData;
+
+                                // validate items
+                                if (
+                                    !Array.isArray(
+                                        items
+                                    )
+                                    ||
+                                    !items.length
+                                ) {
+                                    connection.release();
+
+                                    return reject(
+                                        new Error(
+                                            "Order items are required"
+                                        )
+                                    );
+                                }
+
+                                // calculate total server-side
+                                const calculatedTotal =
+                                    items.reduce(
+                                        (
+                                            sum,
+                                            item
+                                        ) => {
+                                            return (
+                                                sum +
+                                                (
+                                                    safeNumber(
+                                                        item.price
+                                                    ) *
+                                                    Math.max(
+                                                        1,
+                                                        safeInteger(
+                                                            item.qty
+                                                        )
+                                                    )
+                                                )
+                                            );
+                                        },
+                                        0
+                                    );
+
+                                // create order
+                                const orderQuery = `
+                                    INSERT INTO orders
+                                    (
                                         user_id,
                                         customer_name,
                                         customer_email,
@@ -48,218 +133,219 @@ const createOrderService =
                                         zip,
                                         full_address,
                                         payment_method,
-                                        total,
-                                        items
-                                    } =
-                                        orderData;
+                                        total
+                                    )
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                `;
 
-                                    // create order
-                                    const orderQuery = `
-                                        INSERT INTO orders
-                                        (
-                                            user_id,
-                                            customer_name,
-                                            customer_email,
-                                            customer_phone,
-                                            city,
-                                            state,
-                                            zip,
-                                            full_address,
-                                            payment_method,
-                                            total
-                                        )
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                    `;
+                                connection.query(
+                                    orderQuery,
+                                    [
+                                        user_id,
+                                        customer_name,
+                                        customer_email,
+                                        customer_phone,
+                                        city,
+                                        state,
+                                        zip,
+                                        full_address,
+                                        payment_method,
+                                        calculatedTotal
+                                    ],
+                                    (
+                                        orderError,
+                                        orderResult
+                                    ) => {
 
-                                    connection.query(
-                                        orderQuery,
-                                        [
-                                            user_id,
-                                            customer_name,
-                                            customer_email,
-                                            customer_phone,
-                                            city,
-                                            state,
-                                            zip,
-                                            full_address,
-                                            payment_method,
-                                            total
-                                        ],
-                                        (
-                                            orderError,
-                                            orderResult
-                                        ) => {
-                                            if (
-                                                orderError
-                                            ) {
-                                                return connection.rollback(
-                                                    () => {
-                                                        connection.release();
-                                                        reject(
-                                                            orderError
-                                                        );
-                                                    }
-                                                );
-                                            }
+                                        if (
+                                            orderError
+                                        ) {
+                                            return connection.rollback(
+                                                () => {
+                                                    connection.release();
 
-                                            const orderId =
-                                                orderResult.insertId;
+                                                    reject(
+                                                        orderError
+                                                    );
+                                                }
+                                            );
+                                        }
 
-                                            // insert items
-                                            const itemPromises =
-                                                items.map(
-                                                    (
-                                                        item
-                                                    ) => {
-                                                        return new Promise(
-                                                            (
-                                                                itemResolve,
-                                                                itemReject
-                                                            ) => {
-                                                                const itemQuery = `
-                                                                    INSERT INTO order_items
-                                                                    (
-                                                                        order_id,
-                                                                        product_id,
-                                                                        name,
-                                                                        price,
-                                                                        qty,
-                                                                        color,
-                                                                        size
-                                                                    )
-                                                                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                                                                `;
+                                        const orderId =
+                                            orderResult.insertId;
 
-                                                                connection.query(
-                                                                    itemQuery,
-                                                                    [
-                                                                        orderId,
-                                                                        item.id,
-                                                                        item.name,
-                                                                        item.price,
-                                                                        item.qty,
-                                                                        item.color,
-                                                                        item.size
-                                                                    ],
-                                                                    (
+                                        // insert items
+                                        const itemPromises =
+                                            items.map(
+                                                (
+                                                    item
+                                                ) => {
+
+                                                    return new Promise(
+                                                        (
+                                                            itemResolve,
+                                                            itemReject
+                                                        ) => {
+
+                                                            const itemQuery = `
+                                                                INSERT INTO order_items
+                                                                (
+                                                                    order_id,
+                                                                    product_id,
+                                                                    name,
+                                                                    price,
+                                                                    qty,
+                                                                    color,
+                                                                    size
+                                                                )
+                                                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                                            `;
+
+                                                            connection.query(
+                                                                itemQuery,
+                                                                [
+                                                                    orderId,
+                                                                    item.id,
+                                                                    item.name,
+                                                                    safeNumber(
+                                                                        item.price
+                                                                    ),
+                                                                    Math.max(
+                                                                        1,
+                                                                        safeInteger(
+                                                                            item.qty
+                                                                        )
+                                                                    ),
+                                                                    item.color || "",
+                                                                    item.size || ""
+                                                                ],
+                                                                (
+                                                                    itemError
+                                                                ) => {
+
+                                                                    if (
                                                                         itemError
-                                                                    ) => {
-                                                                        if (
+                                                                    ) {
+                                                                        return itemReject(
                                                                             itemError
-                                                                        ) {
-                                                                            return itemReject(
-                                                                                itemError
-                                                                            );
-                                                                        }
+                                                                        );
+                                                                    }
 
-                                                                        // update stock
-                                                                        const stockQuery = `
-                                                                            UPDATE products
-                                                                            SET stock = stock - ?
-                                                                            WHERE id = ?
-                                                                            AND stock >= ?
-                                                                        `;
+                                                                    // update stock
+                                                                    const stockQuery = `
+                                                                        UPDATE products
+                                                                        SET stock = stock - ?
+                                                                        WHERE id = ?
+                                                                        AND stock >= ?
+                                                                    `;
 
-                                                                        connection.query(
-                                                                            stockQuery,
-                                                                            [
-                                                                                item.qty,
-                                                                                item.id,
-                                                                                item.qty
-                                                                            ],
-                                                                            (
-                                                                                stockError,
-                                                                                stockResult
-                                                                            ) => {
-                                                                                if (
+                                                                    connection.query(
+                                                                        stockQuery,
+                                                                        [
+                                                                            Math.max(
+                                                                                1,
+                                                                                safeInteger(
+                                                                                    item.qty
+                                                                                )
+                                                                            ),
+                                                                            item.id,
+                                                                            Math.max(
+                                                                                1,
+                                                                                safeInteger(
+                                                                                    item.qty
+                                                                                )
+                                                                            )
+                                                                        ],
+                                                                        (
+                                                                            stockError,
+                                                                            stockResult
+                                                                        ) => {
+
+                                                                            if (
+                                                                                stockError
+                                                                            ) {
+                                                                                return itemReject(
                                                                                     stockError
-                                                                                ) {
-                                                                                    return itemReject(
-                                                                                        stockError
-                                                                                    );
-                                                                                }
-
-                                                                                if (
-                                                                                    stockResult.affectedRows === 0
-                                                                                ) {
-                                                                                    return itemReject(
-                                                                                        new Error(
-                                                                                            `Insufficient stock for ${item.name}`
-                                                                                        )
-                                                                                    );
-                                                                                }
-
-                                                                                itemResolve();
+                                                                                );
                                                                             }
+
+                                                                            if (
+                                                                                stockResult.affectedRows === 0
+                                                                            ) {
+                                                                                return itemReject(
+                                                                                    new Error(
+                                                                                        `Insufficient stock for ${item.name}`
+                                                                                    )
+                                                                                );
+                                                                            }
+
+                                                                            itemResolve();
+                                                                        }
+                                                                    );
+                                                                }
+                                                            );
+                                                        }
+                                                    );
+                                                }
+                                            );
+
+                                        Promise.all(
+                                            itemPromises
+                                        )
+
+                                            .then(
+                                                () => {
+
+                                                    connection.commit(
+                                                        (
+                                                            commitError
+                                                        ) => {
+
+                                                            if (
+                                                                commitError
+                                                            ) {
+                                                                return connection.rollback(
+                                                                    () => {
+                                                                        connection.release();
+
+                                                                        reject(
+                                                                            commitError
                                                                         );
                                                                     }
                                                                 );
                                                             }
-                                                        );
-                                                    }
-                                                );
 
-                                            Promise.all(
-                                                itemPromises
+                                                            connection.release();
+
+                                                            resolve({
+                                                                success: true,
+                                                                orderId,
+                                                                total:
+                                                                    calculatedTotal
+                                                            });
+                                                        }
+                                                    );
+                                                }
                                             )
-                                                .then(
-                                                    () => {
-                                                        connection.commit(
-                                                            (
-                                                                commitError
-                                                            ) => {
-                                                                if (
-                                                                    commitError
-                                                                ) {
-                                                                    return connection.rollback(
-                                                                        () => {
-                                                                            connection.release();
-                                                                            reject(
-                                                                                commitError
-                                                                            );
-                                                                        }
-                                                                    );
-                                                                }
 
-                                                                connection.release();
+                                            .catch(
+                                                (
+                                                    itemError
+                                                ) => {
 
-                                                                resolve({
-                                                                    success: true,
-                                                                    orderId
-                                                                });
-                                                            }
-                                                        );
-                                                    }
-                                                )
+                                                    connection.rollback(
+                                                        () => {
+                                                            connection.release();
 
-                                                .catch(
-                                                    (
-                                                        itemError
-                                                    ) => {
-                                                        connection.rollback(
-                                                            () => {
-                                                                connection.release();
-                                                                reject(
-                                                                    itemError
-                                                                );
-                                                            }
-                                                        );
-                                                    }
-                                                );
-                                        }
-                                    );
-                                } catch (
-                                    error
-                                ) {
-                                    connection.rollback(
-                                        () => {
-                                            connection.release();
-                                            reject(
-                                                error
+                                                            reject(
+                                                                itemError
+                                                            );
+                                                        }
+                                                    );
+                                                }
                                             );
-                                        }
-                                    );
-                                }
+                                    }
+                                );
                             }
                         );
                     }

@@ -82,6 +82,7 @@ const signup =
                             "All fields are required"
                     });
             }
+
             if (
                 cleanName.length < 2
             ) {
@@ -92,6 +93,7 @@ const signup =
                             "Name must be at least 2 characters"
                     });
             }
+
             if (
                 !emailRegex.test(
                     cleanEmail
@@ -104,6 +106,7 @@ const signup =
                             "Invalid email format"
                     });
             }
+
             if (
                 password.length < 8
             ) {
@@ -114,6 +117,7 @@ const signup =
                             "Password must be at least 8 characters"
                     });
             }
+
             if (
                 !strongPasswordRegex
                     .test(password)
@@ -142,6 +146,7 @@ const signup =
                         console.error(
                             error
                         );
+
                         return res.status(500)
                             .json({
                                 success: false,
@@ -149,6 +154,7 @@ const signup =
                                     "Server error"
                             });
                     }
+
                     if (
                         result.length > 0
                     ) {
@@ -194,6 +200,7 @@ const signup =
                                 console.error(
                                     insertError
                                 );
+
                                 return res.status(500)
                                     .json({
                                         success: false,
@@ -215,6 +222,7 @@ const signup =
 
         } catch (error) {
             console.error(error);
+
             res.status(500)
                 .json({
                     success: false,
@@ -264,6 +272,7 @@ const login =
                         console.error(
                             error
                         );
+
                         return res.status(500)
                             .json({
                                 success: false,
@@ -286,6 +295,18 @@ const login =
 
                     const user =
                         result[0];
+
+                    // inactive account check
+                    if (
+                        user.isActive === 0
+                    ) {
+                        return res.status(403)
+                            .json({
+                                success: false,
+                                message:
+                                    "Account has been deactivated"
+                            });
+                    }
 
                     const isMatch =
                         await bcrypt.compare(
@@ -369,8 +390,10 @@ const login =
                     );
                 }
             );
+
         } catch (error) {
             console.error(error);
+
             res.status(500)
                 .json({
                     success: false,
@@ -387,10 +410,12 @@ const refreshAccessToken =
             const {
                 refreshToken
             } = req.body;
+
             const cleanRefreshToken =
                 sanitizeString(
                     refreshToken
                 );
+
             if (
                 !cleanRefreshToken
             ) {
@@ -421,6 +446,7 @@ const refreshAccessToken =
                         console.error(
                             error
                         );
+
                         return res.status(500)
                             .json({
                                 success: false,
@@ -428,6 +454,7 @@ const refreshAccessToken =
                                     "Server error"
                             });
                     }
+
                     if (
                         !Array.isArray(result)
                         || !result.length
@@ -439,6 +466,7 @@ const refreshAccessToken =
                                     "Invalid refresh token"
                             });
                     }
+
                     const user =
                         result[0];
 
@@ -446,17 +474,57 @@ const refreshAccessToken =
                         generateAccessToken(
                             user
                         );
-                    res.status(200)
-                        .json({
-                            success: true,
-                            accessToken:
-                                newAccessToken
-                        });
+
+                    // rotate refresh token
+                    const newRefreshToken =
+                        generateRefreshToken();
+
+                    db.query(
+                        `
+                            UPDATE users
+                            SET refresh_token = ?
+                            WHERE id = ?
+                        `,
+                        [
+                            newRefreshToken,
+                            user.id
+                        ],
+                        (
+                            updateError
+                        ) => {
+                            if (
+                                updateError
+                            ) {
+                                console.error(
+                                    updateError
+                                );
+
+                                return res.status(500)
+                                    .json({
+                                        success: false,
+                                        message:
+                                            "Server error"
+                                    });
+                            }
+
+                            res.status(200)
+                                .json({
+                                    success: true,
+
+                                    accessToken:
+                                        newAccessToken,
+
+                                    refreshToken:
+                                        newRefreshToken
+                                });
+                        }
+                    );
                 }
             );
 
         } catch (error) {
             console.error(error);
+
             res.status(500)
                 .json({
                     success: false,

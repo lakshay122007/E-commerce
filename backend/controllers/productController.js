@@ -47,7 +47,9 @@ const getProducts = (req, res) => {
 
     // featured filter
     if (req.query.featured === "true") {
-        query += params.length ? " AND featured = 1" : " WHERE featured = 1";
+        query += params.length
+            ? " AND featured = 1"
+            : " WHERE featured = 1";
     }
 
     query += " ORDER BY id DESC";
@@ -78,6 +80,7 @@ const getSingleProduct = (req, res) => {
         safeInteger(
             req.params.id
         );
+
     if (!id) {
         return res.status(400)
             .json({
@@ -86,22 +89,38 @@ const getSingleProduct = (req, res) => {
                     "Invalid product ID"
             });
     }
-    const query = "SELECT * FROM products WHERE id = ?";
+
+    const query = `
+        SELECT
+            id,
+            name,
+            description,
+            price,
+            image,
+            category,
+            stock,
+            featured
+        FROM products
+        WHERE id = ?
+    `;
+
     db.query(query, [id], (error, results) => {
         if (error) {
             console.error(error);
-    
+
             return res.status(500).json({
                 success: false,
                 message: "Server error"
             });
         }
+
         if (results.length === 0) {
             return res.status(404).json({
                 success: false,
                 message: "Product not found"
             });
         }
+
         res.status(200).json({
             success: true,
             product: results[0]
@@ -121,13 +140,14 @@ const createProduct = (req, res) => {
         featured
     } = req.body;
 
-    // Basic validation
+    // basic validation
     if (!name || price === undefined) {
         return res.status(400).json({
             success: false,
             message: "Name and price are required"
         });
     }
+
     if (
         safeNumber(price) <= 0
     ) {
@@ -136,13 +156,13 @@ const createProduct = (req, res) => {
             message: "Invalid product price"
         });
     }
-  
+
     const query = `
         INSERT INTO products
         (name, description, price, image, category, stock, featured)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
-  
+
     db.query(
         query,
         [
@@ -166,20 +186,22 @@ const createProduct = (req, res) => {
                 : 0
         ],
         (error, result) => {
-        if (error) {
-            console.error(error);
-  
-            return res.status(500).json({
-                success: false,
-                message: "Server error"
+            if (error) {
+                console.error(error);
+
+                return res.status(500).json({
+                    success: false,
+                    message: "Server error"
+                });
+            }
+
+            res.status(201).json({
+                success: true,
+                message: "Product created successfully",
+                productId: result.insertId
             });
         }
-        res.status(201).json({
-            success: true,
-            message: "Product created successfully",
-            productId: result.insertId
-        });
-    });
+    );
 };
 
 // update product
@@ -188,6 +210,17 @@ const updateProduct = (req, res) => {
         safeInteger(
             req.params.id
         );
+
+    const {
+        name,
+        description,
+        price,
+        image,
+        category,
+        stock,
+        featured
+    } = req.body;
+
     if (!id) {
         return res.status(400)
             .json({
@@ -196,13 +229,15 @@ const updateProduct = (req, res) => {
                     "Invalid product ID"
             });
     }
-  
+
+    // basic validation
     if (!name || price === undefined) {
         return res.status(400).json({
             success: false,
             message: "Name and price are required"
         });
     }
+
     if (
         safeNumber(price) <= 0
     ) {
@@ -211,13 +246,20 @@ const updateProduct = (req, res) => {
             message: "Invalid product price"
         });
     }
-  
+
     const query = `
         UPDATE products
-        SET name = ?, description = ?, price = ?, image = ?, category = ?, stock = ?, featured = ?
+        SET
+            name = ?,
+            description = ?,
+            price = ?,
+            image = ?,
+            category = ?,
+            stock = ?,
+            featured = ?
         WHERE id = ?
     `;
-  
+
     db.query(
         query,
         [
@@ -236,38 +278,43 @@ const updateProduct = (req, res) => {
             ),
             featured === true
             || featured === 1
-            || featured === "1",
+            || featured === "1"
+                ? 1
+                : 0,
             id
         ],
         (error, result) => {
-        if (error) {
-            console.error(error);
-  
-            return res.status(500).json({
-                success: false,
-                message: "Server error"
+            if (error) {
+                console.error(error);
+
+                return res.status(500).json({
+                    success: false,
+                    message: "Server error"
+                });
+            }
+
+            if (result.affectedRows === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Product not found"
+                });
+            }
+
+            res.status(200).json({
+                success: true,
+                message: "Product updated successfully"
             });
         }
-        if (result.affectedRows === 0) {
-            return res.status(404).json({
-                success: false,
-                message: "Product not found"
-            });
-        }
-  
-        res.status(200).json({
-            success: true,
-            message: "Product updated successfully"
-        });
-    });
+    );
 };
 
-// delete products
+// delete product
 const deleteProduct = (req, res) => {
     const id =
         safeInteger(
             req.params.id
         );
+
     if (!id) {
         return res.status(400)
             .json({
@@ -276,23 +323,26 @@ const deleteProduct = (req, res) => {
                     "Invalid product ID"
             });
     }
+
     const query = "DELETE FROM products WHERE id = ?";
+
     db.query(query, [id], (error, result) => {
         if (error) {
             console.error(error);
-  
+
             return res.status(500).json({
                 success: false,
                 message: "Server error"
             });
         }
+
         if (result.affectedRows === 0) {
             return res.status(404).json({
                 success: false,
                 message: "Product not found"
             });
         }
-  
+
         res.status(200).json({
             success: true,
             message: "Product deleted successfully"

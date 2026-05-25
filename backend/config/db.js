@@ -49,10 +49,6 @@ const pool =
         charset: "utf8mb4"
     });
 
-// promise wrapper
-const promisePool =
-    pool.promise();
-
 // database connection test
 pool.getConnection(
     (
@@ -65,6 +61,7 @@ pool.getConnection(
             );
 
             console.error(error);
+
             process.exit(1);
         }
 
@@ -93,6 +90,7 @@ process.on(
                         "Error closing MySQL pool:",
                         error
                     );
+
                     process.exit(1);
                 }
 
@@ -118,6 +116,6 @@ pool.on(
     }
 );
 
-// export pool
+// export callback pool
 module.exports =
-    promisePool;
+    pool;
